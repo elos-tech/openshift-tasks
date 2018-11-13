@@ -2,7 +2,7 @@
 
 // Run this pipeline on the custom Maven Slave ('maven')
 // Maven Slaves have JDK and Maven already installed
-// 'maven-appdev' has skopeo installed as well.
+// 'maven' has skopeo installed as well.
 node('maven') {
   // Define Maven Command. Make sure it points to the correct
   // settings for our Nexus installation (use the service to
@@ -12,7 +12,6 @@ node('maven') {
 
   // Checkout Source Code
   stage('Checkout Source') {
-    // TBD
     git 'https://github.com/elos-tech/openshift-tasks.git'
   }
 

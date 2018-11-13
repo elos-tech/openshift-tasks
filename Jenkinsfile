@@ -1,6 +1,6 @@
 #!groovy
 
-// Run this pipeline on the custom Maven Slave ('maven-appdev')
+// Run this pipeline on the custom Maven Slave ('maven')
 // Maven Slaves have JDK and Maven already installed
 // 'maven-appdev' has skopeo installed as well.
 node('maven') {

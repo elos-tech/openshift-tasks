@@ -262,6 +262,8 @@ stage('Copy Image to Nexus Docker Registry') {
   echo "Copy image to Nexus Docker Registry"
 
   sh "skopeo copy --src-tls-verify=false --dest-tls-verify=false --src-creds openshift:\$(oc whoami -t) --dest-creds admin:admin123 docker://docker-registry.default.svc.cluster.local:5000/xyz-tasks-dev/tasks:${devTag} docker://nexus-registry.xyz-nexus.svc.cluster.local:5000/tasks:${devTag}"
+  
+  openshiftTag alias: 'false', destStream: 'tasks', destTag: prodTag, destinationNamespace: 'xyz-tasks-dev', namespace: 'xyz-tasks-dev', srcStream: 'tasks', srcTag: devTag, verbose: 'false'
   }
 
  // Deploy the built image to the Development Environment.

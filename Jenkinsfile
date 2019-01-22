@@ -66,7 +66,7 @@ node('maven') {
     sh "oc start-build tasks --follow --from-file=http://nexus3.lsm-nexus.svc:8081/repository/releases/org/jboss/quickstarts/eap/tasks/${version}/tasks-${version}.war -n lsm-tasks-dev"
 
   // Tag the image using the devTag
-  openshiftTag alias: 'false', destStream: 'tasks', destTag: devTag, destinationNamespace: 'lsm-tasks-dev', namespace: 'lsm-tasks-dev', srcStream: 'tasks', srcTag: 'latest', verbose: 'false'
+  openshiftTag alias: 'false', destStream: 'tasks', destTag: devTag, destinationNamespace: 'csas-tasks-dev', namespace: 'csas-tasks-dev', srcStream: 'tasks', srcTag: 'latest', verbose: 'false'
   }
 
   // Deploy the built image to the Development Environment.
@@ -80,10 +80,10 @@ node('maven') {
     sh "oc create configmap tasks-config --from-file=./configuration/application-users.properties --from-file=./configuration/application-roles.properties -n lsm-tasks-dev"
 
     // Deploy the development application.
-    openshiftDeploy depCfg: 'tasks', namespace: 'lsm-tasks-dev', verbose: 'false', waitTime: '', waitUnit: 'sec'
+    openshiftDeploy depCfg: 'tasks', namespace: 'csas-tasks-dev', verbose: 'false', waitTime: '', waitUnit: 'sec'
     
-    openshiftVerifyDeployment depCfg: 'tasks', namespace: 'lsm-tasks-dev', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: '', waitUnit: 'sec'
-    openshiftVerifyService namespace: 'lsm-tasks-dev', svcName: 'tasks', verbose: 'false'
+    openshiftVerifyDeployment depCfg: 'tasks', namespace: 'csas-tasks-dev', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: '', waitUnit: 'sec'
+    openshiftVerifyService namespace: 'csas-tasks-dev', svcName: 'tasks', verbose: 'false'
   }
 
   // Run Integration Tests in the Development Environment.
@@ -93,15 +93,15 @@ node('maven') {
 
     // Create a new task called "integration_test_1"
     echo "Creating task"
-    sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X POST http://tasks.lsm-tasks-dev.svc:8080/ws/tasks/integration_test_1"
+    sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X POST http://tasks.csas-tasks-dev.svc:8080/ws/tasks/integration_test_1"
 
     // Retrieve task with id "1"
     echo "Retrieving tasks"
-    sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X GET http://tasks.lsm-tasks-dev.svc:8080/ws/tasks/1"
+    sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X GET http://tasks.csas-tasks-dev.svc:8080/ws/tasks/1"
 
     // Delete task with id "1"
     echo "Deleting tasks"
-    sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X DELETE http://tasks.lsm-tasks-dev.svc:8080/ws/tasks/1"
+    sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X DELETE http://tasks.csas-tasks-dev.svc:8080/ws/tasks/1"
   }
 }
 // Convenience Functions to read variables from the pom.xml

@@ -379,3 +379,23 @@ stage('Switch over to new Version') {
   // Replace xyz-tasks-prod with the name of your production project
   sh 'oc patch route tasks -n xyz-tasks-prod -p \'{"spec":{"to":{"name":"' + destApp + '"}}}\''
 }
+
+
+Pipeline strategy in OCP:
+echo "apiVersion: v1
+items:
+- kind: "BuildConfig"
+  apiVersion: "v1"
+  metadata:
+    name: "tasks-pipeline"
+  spec:
+    source:
+      type: "Git"
+      git:
+        uri: "http://gogs.xyz-gogs.svc.cluster.local:3000/CICDLabs/openshift-tasks-private"
+    strategy:
+      type: "JenkinsPipeline"
+      jenkinsPipelineStrategy:
+        jenkinsfilePath: Jenkinsfile
+kind: List
+metadata: []" | oc create -f - -n xyz-jenkins

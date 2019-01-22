@@ -76,8 +76,8 @@ node('maven') {
     sh "oc set image dc/tasks tasks=docker-registry.default.svc:5000/csas-tasks-dev/tasks:${devTag} -n csas-tasks-dev"
 
     // Update the Config Map which contains the users for the Tasks application
-    sh "oc delete configmap tasks-config -n lsm-tasks-dev --ignore-not-found=true"
-    sh "oc create configmap tasks-config --from-file=./configuration/application-users.properties --from-file=./configuration/application-roles.properties -n lsm-tasks-dev"
+    sh "oc delete configmap tasks-config -n csas-tasks-dev --ignore-not-found=true"
+    sh "oc create configmap tasks-config --from-file=./configuration/application-users.properties --from-file=./configuration/application-roles.properties -n csas-tasks-dev"
 
     // Deploy the development application.
     openshiftDeploy depCfg: 'tasks', namespace: 'csas-tasks-dev', verbose: 'false', waitTime: '', waitUnit: 'sec'

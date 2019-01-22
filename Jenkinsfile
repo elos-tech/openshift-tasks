@@ -63,7 +63,7 @@ node('maven') {
 
 
   // Use the file you just published into Nexus:
-    sh "oc start-build tasks --follow --from-file=http://nexus3.lsm-nexus.svc:8081/repository/releases/org/jboss/quickstarts/eap/tasks/${version}/tasks-${version}.war -n lsm-tasks-dev"
+    sh "oc start-build tasks --follow --from-file=http://nexus3.lsm-nexus.svc:8081/repository/releases/org/jboss/quickstarts/eap/tasks/${version}/tasks-${version}.war -n csas-tasks-dev"
 
   // Tag the image using the devTag
   openshiftTag alias: 'false', destStream: 'tasks', destTag: devTag, destinationNamespace: 'csas-tasks-dev', namespace: 'csas-tasks-dev', srcStream: 'tasks', srcTag: 'latest', verbose: 'false'

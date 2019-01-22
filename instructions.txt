@@ -155,8 +155,12 @@ oc set volume dc/tasks --add --name=jboss-config --mount-path=/opt/jboss/wildfly
 Associate config maps with path on logical filesystem:
 oc set volume dc/tasks --add --name=jboss-config1 --mount-path=/opt/jboss/wildfly/standalone/configuration/application-roles.properties --sub-path=application-roles.properties --configmap-name=tasks-config -n xyz-tasks-dev
 
-Setup Jenkins Pipeline
+Create custom jenkins agent pod
+oc new-build  -D $'FROM docker.io/openshift/jenkins-agent-maven-35-centos7:v3.11\n
+      USER root\nRUN yum -y install skopeo && yum clean all\n
+      USER 1001' --name=jenkins-agent-appdev -n xyz-jenkins
 
+Setup Jenkins Pipeline
 Log into Jenkins server using exposed route, i.e.:
 https://jenkins-xyz-jenkins.127.0.0.1.nip.io
 

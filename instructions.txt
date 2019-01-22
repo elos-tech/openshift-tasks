@@ -315,3 +315,67 @@ def getArtifactIdFromPom(pom) {
  matcher ? matcher[0][1] : null
 }
 
+Production project setup (if wanted):
+# Set up Production Project
+oc new-project xyz-tasks-prod --display-name "Tasks Production"
+oc policy add-role-to-group system:image-puller system:serviceaccounts:xyz-tasks-prod -n xyz-tasks-dev
+oc policy add-role-to-user edit system:serviceaccount:xyz-jenkins:jenkins -n xyz-tasks-prod
+
+# Create Blue Application
+oc new-app xyz-tasks-dev/tasks:0.0 --name=tasks-blue --allow-missing-imagestream-tags=true -n xyz-tasks-prod
+oc set triggers dc/tasks-blue --remove-all -n xyz-tasks-prod
+oc expose dc tasks-blue --port 8080 -n xyz-tasks-prod
+oc create configmap tasks-blue-config --from-literal="application-users.properties=Placeholder" --from-literal="application-roles.properties=Placeholder" -n xyz-tasks-prod
+oc set volume dc/tasks-blue --add --name=jboss-config --mount-path=/opt/eap/standalone/configuration/application-users.properties --sub-path=application-users.properties --configmap-name=tasks-blue-config -n xyz-tasks-prod
+oc set volume dc/tasks-blue --add --name=jboss-config1 --mount-path=/opt/eap/standalone/configuration/application-roles.properties --sub-path=application-roles.properties --configmap-name=tasks-blue-config -n xyz-tasks-prod
+
+# Create Green Application
+oc new-app xyz-tasks-dev/tasks:0.0 --name=tasks-green --allow-missing-imagestream-tags=true -n xyz-tasks-prod
+oc set triggers dc/tasks-green --remove-all -n xyz-tasks-prod
+oc expose dc tasks-green --port 8080 -n xyz-tasks-prod
+oc create configmap tasks-green-config --from-literal="application-users.properties=Placeholder" --from-literal="application-roles.properties=Placeholder" -n xyz-tasks-prod
+oc set volume dc/tasks-green --add --name=jboss-config --mount-path=/opt/eap/standalone/configuration/application-users.properties --sub-path=application-users.properties --configmap-name=tasks-green-config -n xyz-tasks-prod
+oc set volume dc/tasks-green --add --name=jboss-config1 --mount-path=/opt/eap/standalone/configuration/application-roles.properties --sub-path=application-roles.properties --configmap-name=tasks-green-config -n xyz-tasks-prod
+
+# Expose Blue service as route to make blue application active
+oc expose svc/tasks-blue --name tasks -n xyz-tasks-prod
+
+Pipeline example for PROD deployment:
+// Blue/Green Deployment into Production
+// -------------------------------------
+// Do not activate the new version yet.
+def destApp   = "tasks-green"
+def activeApp = ""
+
+stage('Blue/Green Production Deployment') {
+  // Replace xyz-tasks-dev and xyz-tasks-prod with
+  // your project names
+  activeApp = sh(returnStdout: true, script: "oc get route tasks -n xyz-tasks-prod -o jsonpath='{ .spec.to.name }'").trim()
+  if (activeApp == "tasks-green") {
+    destApp = "tasks-blue"
+  }
+  echo "Active Application:      " + activeApp
+  echo "Destination Application: " + destApp
+
+  // Update the Image on the Production Deployment Config
+  sh "oc set image dc/${destApp} ${destApp}=docker-registry.default.svc:5000/xyz-tasks-dev/tasks:${prodTag} -n xyz-tasks-prod"
+
+  // Update the Config Map which contains the users for the Tasks application
+  sh "oc delete configmap ${destApp}-config -n xyz-tasks-prod --ignore-not-found=true"
+  sh "oc create configmap ${destApp}-config --from-file=./configuration/application-users.properties --from-file=./configuration/application-roles.properties -n xyz-tasks-prod"
+
+  // Deploy the inactive application.
+  // Replace xyz-tasks-prod with the name of your production project
+  openshiftDeploy depCfg: destApp, namespace: 'xyz-tasks-prod', verbose: 'false', waitTime: '', waitUnit: 'sec'
+  openshiftVerifyDeployment depCfg: destApp, namespace: 'xyz-tasks-prod', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'true', waitTime: '', waitUnit: 'sec'
+  openshiftVerifyService namespace: 'xyz-tasks-prod', svcName: destApp, verbose: 'false'
+}
+
+Switch stage (user input):
+stage('Switch over to new Version') {
+  input "Switch Production?"
+
+  echo "Switching Production application to ${destApp}."
+  // Replace xyz-tasks-prod with the name of your production project
+  sh 'oc patch route tasks -n xyz-tasks-prod -p \'{"spec":{"to":{"name":"' + destApp + '"}}}\''
+}

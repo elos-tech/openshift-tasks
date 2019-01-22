@@ -1,0 +1,306 @@
+http://oc-utils-oc-utils.oc-apps.cz.moravia-it.com/oc-3.11.59-windows.zip
+http://oc-utils-oc-utils.oc-apps.cz.moravia-it.com/oc-3.11.59-linux.tar.gz
+http://oc-utils-oc-utils.oc-apps.cz.moravia-it.com/oc-3.11.59-osx.tar.gz
+
+GitHub Repository URI:
+https://github.com/elos-tech/openshift-tasks
+Setup Nexus Artifact Repository Server
+Create project for setting-up Nexus repository:
+oc new-project xyz-nexus --display-name "Nexus Repository Server"
+
+Install new application from publicly available image for Sonatype Nexus:
+oc new-app sonatype/nexus3:latest
+
+Expose default service nexus3 on (default) route:
+oc expose svc nexus3
+
+Pause rollouts to execute deployment configuration changes in one step:
+oc rollout pause dc nexus3
+
+Set deployment strategy from Rollout to Recreate:
+oc patch dc nexus3 --patch='{ "spec": { "strategy": { "type": "Recreate" }}}'
+
+Set resources requests (min.) and limits (max.) values:
+oc set resources dc nexus3 --limits=memory=1Gi,cpu=1 --requests=memory=500Mi,cpu=500m
+
+Create persistent volume claim for storing Nexus data (echo command injects configuration file into oc create command by pipe):
+echo "apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+ name: nexus-pvc
+spec:
+ accessModes:
+ - ReadWriteOnce
+ resources:
+   requests:
+     storage: 4Gi" | oc create -f -
+
+Associate mountpoint in Pod filesystem with created PVC claim:
+oc set volume dc/nexus3 --add --overwrite --name=nexus3-volume-1 --mount-path=/nexus-data/ --type persistentVolumeClaim --claim-name=nexus-pvc
+
+Set liveness probe for Pod monitoring:
+oc set probe dc/nexus3 --liveness --failure-threshold 3 --initial-delay-seconds 60 -- echo ok
+
+Set readiness probe for Pod monitoring:
+oc set probe dc/nexus3 --readiness --failure-threshold 3 --initial-delay-seconds 60 --get-url=http://:8081/repository/maven-public/
+
+Resume paused changes and execute new configuration:
+oc rollout resume dc nexus3
+
+Setup Repositories Structure
+Login into the running Nexus pod either by OCP web console or by using the command:
+oc rsh <POD_NAME> -n xyz-nexus
+
+Change working directory to /tmp
+cd /tmp
+
+Fetch the Nexus setup script from public git repository:
+curl -o setup_nexus3.sh -s https://raw.githubusercontent.com/wkulhanek/ocp_advanced_development_resources/master/nexus/setup_nexus3.sh
+
+Make the script executable:
+chmod +x setup_nexus3.sh
+
+Execute the script with following parameters:
+./setup_nexus3.sh admin admin123 http://localhost:8081
+
+Setup Sonarqube Analysis Server
+Create new project for Sonarqube server:
+oc new-project xyz-sonarqube --display-name "Sonarqube Analysis Server"
+
+Create persistent database server based on PostgreSQL application template:
+oc new-app --template=postgresql-persistent --param POSTGRESQL_USER=sonar --param POSTGRESQL_PASSWORD=sonar --param POSTGRESQL_DATABASE=sonar --param VOLUME_CAPACITY=4Gi --labels=app=sonarqube_db
+
+Wait for database to start-up. Create Sonarqube application from public image:
+oc new-app --docker-image=wkulhanek/sonarqube:6.7.4 --env=SONARQUBE_JDBC_USERNAME=sonar --env=SONARQUBE_JDBC_PASSWORD=sonar --env=SONARQUBE_JDBC_URL=jdbc:postgresql://postgresql/sonar --labels=app=sonarqube
+Pause deployment based on configuration changes:
+oc rollout pause dc sonarqube
+
+Expose default service as default route:
+oc expose service sonarqube
+
+Create persistent volume claim for Sonarqube application data:
+echo "apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+ name: sonarqube-pvc
+spec:
+ accessModes:
+ - ReadWriteOnce
+ resources:
+   requests:
+     storage: 4Gi" | oc create -f -
+
+Associate PVC claim with pod mount path:
+oc set volume dc/sonarqube --add --overwrite --name=sonarqube-volume-1 --mount-path=/opt/sonarqube/data/ --type persistentVolumeClaim --claim-name=sonarqube-pvc
+
+Set resources requests and limits:
+oc set resources dc/sonarqube --limits=memory=1Gi,cpu=1 --requests=memory=1Gi,cpu=500m
+
+Change deployment strategy from Rollout to Recreate:
+oc patch dc sonarqube --patch='{ "spec": { "strategy": { "type": "Recreate" }}}'
+
+Set liveness probe based on container command execution:
+oc set probe dc/sonarqube --liveness --failure-threshold 3 --initial-delay-seconds 40 -- echo ok
+
+Set readiness probe based on HTTP check:
+oc set probe dc/sonarqube --readiness --failure-threshold 3 --initial-delay-seconds 20 --get-url=http://:9000/about
+
+Resume deployment execution:
+oc rollout resume dc sonarqube
+
+Setup Jenkins Master Server
+Create new project hosting our Jenkins application:
+oc new-project xyz-jenkins --display-name "Jenkins Master Server"
+
+Create new application based on public container image:
+oc new-app jenkins-persistent --param ENABLE_OAUTH=true --param MEMORY_LIMIT=2Gi --param VOLUME_CAPACITY=4Gi
+
+Setup Development Project
+Create new project for our application deployment:
+oc new-project xyz-tasks-dev --display-name "Tasks Application Development"
+
+Grant edit rights on this project to jenkins user:
+oc policy add-role-to-user edit system:serviceaccount:xyz-jenkins:jenkins -n xyz-tasks-dev
+
+Create build configuration for our image build stage in pipeline:
+oc new-build --binary=true --name="tasks" --docker-image=jboss/wildfly:latest -n xyz-tasks-dev
+
+Edit created build configuration using OCP web console to match this sample:
+
+source:
+   binary: {}
+   dockerfile: |-
+     FROM jboss/wildfly
+     ADD tasks-*.war /opt/jboss/wildfly/standalone/deployments/
+   type: Binary
+
+Create new application to host our deliverables for integration and user testing:
+oc new-app xyz-tasks-dev/tasks:0.0-0 --name=tasks --allow-missing-imagestream-tags=true --allow-missing-images -n xyz-tasks-dev
+
+Remove deployment triggers, deployment will be executed from CICD pipeline:
+oc set triggers dc/tasks --remove-all -n xyz-tasks-dev
+
+Expose port 8080 as application service:
+oc expose dc tasks --port 8080 -n xyz-tasks-dev
+
+Expose configured service as external route:
+oc expose svc tasks -n xyz-tasks-dev
+
+Create configuration maps holding application config data and init with placeholder values (wildfly authentication properties files):
+oc create configmap tasks-config --from-literal="application-users.properties=Placeholder" --from-literal="application-roles.properties=Placeholder" -n xyz-tasks-dev
+
+Associate config maps with path on logical filesystem:
+oc set volume dc/tasks --add --name=jboss-config --mount-path=/opt/jboss/wildfly/standalone/configuration/application-users.properties --sub-path=application-users.properties --configmap-name=tasks-config -n xyz-tasks-dev
+
+Associate config maps with path on logical filesystem:
+oc set volume dc/tasks --add --name=jboss-config1 --mount-path=/opt/jboss/wildfly/standalone/configuration/application-roles.properties --sub-path=application-roles.properties --configmap-name=tasks-config -n xyz-tasks-dev
+
+Setup Jenkins Pipeline
+
+Log into Jenkins server using exposed route, i.e.:
+https://jenkins-xyz-jenkins.127.0.0.1.nip.io
+
+In the web interface create new Pipeline project named Test.
+
+Setup following pipeline to test out maven slave pod:
+
+#!groovy
+
+// Run this pipeline on the custom Maven Slave ('maven')
+// Maven Slaves have JDK and Maven installed.
+node('maven') {
+
+ // Test stage
+ stage('Test Pipeline') {
+   echo “Testing simple Pipeline”
+   sh ('mvn --version')
+   sh ('oc version')
+}
+
+Observe results in Jenkins build console output.
+
+In the web interface create new Pipeline project named Tasks.
+
+Setup following pipeline to execute our application lifecycle:
+
+#!groovy
+
+// Run this pipeline on the custom Maven Slave ('maven')
+// Maven Slaves have JDK and Maven installed.
+node('maven') {
+ // Define Maven Command. Make sure it points to the correct
+ // settings for our Nexus installation (use the service to
+ // bypass the router). The file nexus_openshift_settings.xml
+ // needs to be in the Source Code repository.
+ def mvnCmd = "mvn -s ./nexus_openshift_settings.xml"
+
+ // Checkout Source Code
+ stage('Checkout Source') {
+   git 'https://github.com/elos-tech/openshift-tasks.git'
+ }
+
+ // The following variables need to be defined at the top level
+ // and not inside the scope of a stage - otherwise they would not
+ // be accessible from other stages.
+ // Extract version and other properties from the pom.xml
+ def groupId    = getGroupIdFromPom("pom.xml")
+ def artifactId = getArtifactIdFromPom("pom.xml")
+ def version    = getVersionFromPom("pom.xml")
+
+ // Set the tag for the development image: version + build number
+ def devTag  = "${version}-${BUILD_NUMBER}"
+ // Set the tag for the production image: version
+ def prodTag = "${version}"
+
+ // Using Maven build the war file
+ // Do not run tests in this step
+ stage('Build war') {
+   echo "Building version ${version}"
+  
+   sh "${mvnCmd} clean package -DskipTests"
+ }
+
+ // Using Maven run the unit tests
+ stage('Unit Tests') {
+   echo "Running Unit Tests"
+  
+   sh "${mvnCmd} test"
+ }
+
+ // Using Maven call SonarQube for Code Analysis
+ stage('Code Analysis') {
+   echo "Running Code Analysis"
+  
+   sh "${mvnCmd} sonar:sonar -Dsonar.host.url=http://sonarqube.xyz-sonarqube.svc:9000 -Dsonar.projectName=${JOB_BASE_NAME} -Dsonar.projectVersion=${devTag}"
+ }
+
+ // Publish the built war file to Nexus
+ stage('Publish to Nexus') {
+   echo "Publish to Nexus"
+  
+   sh "${mvnCmd} deploy -DskipTests=true -DaltDeploymentRepository=nexus::default::http://nexus3.xyz-nexus.svc:8081/repository/releases"
+ }
+
+ // Build the OpenShift Image in OpenShift and tag it.
+ stage('Build and Tag OpenShift Image') {
+   echo "Building OpenShift container image tasks:${devTag}"
+
+
+ // Use the file you just published into Nexus:
+   sh "oc start-build tasks --follow --from-file=http://nexus3.xyz-nexus.svc:8081/repository/releases/org/jboss/quickstarts/eap/tasks/${version}/tasks-${version}.war -n xyz-tasks-dev"
+
+ // Tag the image using the devTag
+ openshiftTag alias: 'false', destStream: 'tasks', destTag: devTag, destinationNamespace: 'xyz-tasks-dev', namespace: 'xyz-tasks-dev', srcStream: 'tasks', srcTag: 'latest', verbose: 'false'
+ }
+
+ // Deploy the built image to the Development Environment.
+ stage('Deploy to Dev') {
+   echo "Deploying container image to Development Project"
+   // Update the Image on the Development Deployment Config
+   sh "oc set image dc/tasks tasks=172.30.1.1:5000/xyz-tasks-dev/tasks:${devTag} -n xyz-tasks-dev"
+
+   // Update the Config Map which contains the users for the Tasks application
+   sh "oc delete configmap tasks-config -n xyz-tasks-dev --ignore-not-found=true"
+   sh "oc create configmap tasks-config --from-file=./configuration/application-users.properties --from-file=./configuration/application-roles.properties -n xyz-tasks-dev"
+
+   // Deploy the development application.
+   openshiftDeploy depCfg: 'tasks', namespace: 'xyz-tasks-dev', verbose: 'false', waitTime: '', waitUnit: 'sec'
+  
+   openshiftVerifyDeployment depCfg: 'tasks', namespace: 'xyz-tasks-dev', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: '', waitUnit: 'sec'
+   openshiftVerifyService namespace: 'xyz-tasks-dev', svcName: 'tasks', verbose: 'false'
+ }
+
+ // Run Integration Tests in the Development Environment.
+ stage('Integration Tests') {
+   echo "Running Integration Tests"
+   sleep 30
+
+   // Create a new task called "integration_test_1"
+   echo "Creating task"
+   sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X POST http://tasks.xyz-tasks-dev.svc:8080/ws/tasks/integration_test_1"
+
+   // Retrieve task with id "1"
+   echo "Retrieving tasks"
+   sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X GET http://tasks.xyz-tasks-dev.svc:8080/ws/tasks/1"
+
+   // Delete task with id "1"
+   echo "Deleting tasks"
+   sh "curl -i -f -u 'tasks:redhat1' -H 'Content-Length: 0' -X DELETE http://tasks.xyz-tasks-dev.svc:8080/ws/tasks/1"
+ }
+}
+// Convenience Functions to read variables from the pom.xml
+// Do not change anything below this line.
+// --------------------------------------------------------
+def getVersionFromPom(pom) {
+ def matcher = readFile(pom) =~ '<version>(.+)</version>'
+ matcher ? matcher[0][1] : null
+}
+def getGroupIdFromPom(pom) {
+ def matcher = readFile(pom) =~ '<groupId>(.+)</groupId>'
+ matcher ? matcher[0][1] : null
+}
+def getArtifactIdFromPom(pom) {
+ def matcher = readFile(pom) =~ '<artifactId>(.+)</artifactId>'
+ matcher ? matcher[0][1] : null
+}
+

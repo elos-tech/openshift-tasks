@@ -257,6 +257,13 @@ node('maven') {
  openshiftTag alias: 'false', destStream: 'tasks', destTag: devTag, destinationNamespace: 'xyz-tasks-dev', namespace: 'xyz-tasks-dev', srcStream: 'tasks', srcTag: 'latest', verbose: 'false'
  }
 
+// Copy Image to Nexus Docker Registry
+stage('Copy Image to Nexus Docker Registry') {
+  echo "Copy image to Nexus Docker Registry"
+
+  sh "skopeo copy --src-tls-verify=false --dest-tls-verify=false --src-creds openshift:\$(oc whoami -t) --dest-creds admin:admin123 docker://docker-registry.default.svc.cluster.local:5000/xyz-tasks-dev/tasks:${devTag} docker://nexus-registry.xyz-nexus.svc.cluster.local:5000/tasks:${devTag}"
+  }
+
  // Deploy the built image to the Development Environment.
  stage('Deploy to Dev') {
    echo "Deploying container image to Development Project"
